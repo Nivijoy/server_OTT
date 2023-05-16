@@ -1,0 +1,34 @@
+{
+    "mysqlserver1": {
+        "host": "103.231.219.90",
+        "user": "Gltv",
+        "password": "Gltvadm!n2021",
+        "database": "ott"
+    },
+    "mysqlserver2": {
+        "host": "103.231.219.90",
+        "user": "Gltv",
+        "password": "Gltvadm!n2021",
+        "database": "ott"
+    },
+    "ottapi": {
+        "vendorCode": "BLSSPL",
+        "vendorAuthKey": "QkxTU1BMJDE2MzQ2NTIxNzRnZW5pdXNvdHQ",
+        "AuthKey": "Basic QkxTU1BMJDE2MzQ2NTIxNzRnZW5pdXNvdHQ",
+        "getplan": "https://apiv1.geniusott.com/api/OTT/GFetchCurrentPlans?VendorCode=BLSSPL&Validity=",
+        "getsubscription": "https://apiv1.geniusott.com/api/OTT/GCustomerRegistration"
+    },
+    "gltvapi": {
+        "url": "https://crm.gltv.co.in/api/gltv/activeaccount",
+        "vendorCode": "LIMBLU",
+        "vendorAuthKey": "f7119930ac6ea7cb25e26b7ab72ae39e"
+    },
+    "playbox": {
+        "vendorCode": "",
+        "pkey": "a8d75f4452e4df8ed737618de9217fa2b04a4994b30625d9919d5b9e13d0a77b3d39bfb570ddc64bf98df646c525f63bdf4c3b0a153ee74bb8f25c7dae9aa224",
+        "AuthKey": "Vp0EQCBNsF5hbBWFJmaiR2xIBHhQyH4S4DLVy6t1",
+        "getplan": "https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/",
+        "planactivation":"https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/assignPack",
+        "getsubscription": "https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/getPack?partnerKey="
+    }
+}
