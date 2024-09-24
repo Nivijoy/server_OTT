@@ -13,14 +13,89 @@ const rp = util.promisify(request);
 
 gltvapi.use(compress());
 
-async function pbcheckavapack(req,res) {
+
+//* OTT PLAY INTEGRATIN ------------------------------
+
+const ottplayHeader = {
+  'Content-Type': 'application/json',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
+
+async function getOttPlayActivePlan() {
+  const { url, login_id, api_token, operCode } = conf.ottplay;
+  // Log the request details
+  console.log('Making request to:', url + '/operator/active-plan');
+  console.log('Request Header:', {
+    'Content-Type': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+  });
+  console.log('Request body:', {
+    "login_id": login_id,
+    "api_token": api_token,
+    "operCode": operCode,
+    "use_alt_lco_code": "0"
+  });
+  try {
+    const activePlanDetails = await rp({
+      method: 'POST',
+      url: url + '/operator/active-plan',
+      json: true,
+      body: {
+        "login_id": login_id,
+        "api_token": api_token,
+        "operCode": operCode,
+        "use_alt_lco_code": "0"
+      },
+      headers: ottplayHeader
+    });
+
+    // Log the successful response
+    console.log('Response status code:', activePlanDetails.statusCode);
+    console.log('Response headers:', activePlanDetails.headers);
+    console.log('Response body:', activePlanDetails.body);
+    return activePlanDetails;
+  } catch (error) {
+    // Log the error if the request fails
+    console.error('Error fetching active plan:', error.message);
+    throw error;
+  }
+}
+
+async function getOttPlayBalance(isIsp = true) {
+  const { url, login_id, api_token, operCode } = conf.ottplay;
+  const method = isIsp ? 'isp' : 'operator'
+  const balanceResp = await rp({
+    'method': 'POST', 'url': url + '/' + method + '/balance',
+    'json': { "login_id": login_id, "api_token": api_token, "operCode": operCode, "use_alt_lco_code": "0" },
+    'headers': ottplayHeader
+  });
+  console.log('Get Operator Balance', balanceResp.body);
+  return balanceResp;
+}
+
+async function OttPlaySubscription(data) {
+  const { url, login_id, api_token, operCode } = conf.ottplay;
+  const subscriptionResp = await rp({
+    'method': 'POST', 'url': url + '/activity',
+    'json': { "phone": data.mobile, "plan_code": data.ottplancode, "mode": "RENEW", "login_id": login_id, "api_token": api_token, "operCode": operCode, "use_alt_lco_code": "0" },
+    'headers': ottplayHeader
+  });
+  console.log('OTT PLAY SUBSCRIPTION RESPONSE', subscriptionResp);
+  return subscriptionResp;
+}
+
+
+//* -------------------------------------
+
+async function pbcheckavapack(req, res) {
   const getpartnerpack = await rp({ 'method': 'GET', 'url': conf.playbox.getplan + conf.playbox.pkey + '/packs', 'headers': { 'Content-Type': 'application/json', 'x-api-key': conf.playbox.AuthKey } });
   return res.end(getpartnerpack.body);
 }
 async function PlayBoxottSubscription(d) {
   const getPlayBoxSubscription = await rp({ 'method': 'POST', 'url': conf.playbox.planactivation, 'json': { "phone": d.mobile, "partnerKey": conf.playbox.pkey, "packCode": d.ottplancode }, 'headers': { 'Content-Type': 'application/json', 'x-api-key': conf.playbox.AuthKey } });
   console.log('playbox subscription response', getPlayBoxSubscription.body);
-  const presult =  getPlayBoxSubscription.body;
+  const presult = getPlayBoxSubscription.body;
   console.log('presult--------------------------', presult);
   return presult;
 }
@@ -51,7 +126,7 @@ const ottSubscription = async (d) => {
         })
         console.log('bodydate:', bodydate);
         const rp = util.promisify(request);
-        // const response = await rp({ 'method': 'POST', 'url': conf.ottapi.getsubscription, 'headers': { 'Authorization': conf.ottapi.AuthKey, 'Content-Type': 'application/json' }, body: bodydate });
+        const response = await rp({ 'method': 'POST', 'url': conf.ottapi.getsubscription, 'headers': { 'Authorization': conf.ottapi.AuthKey, 'Content-Type': 'application/json' }, body: bodydate });
         if (response.body) {
           console.log('OTT Response Body', response.body);
           resolve({ refid: refid, responce: response.body, invid: d.iolid });
@@ -136,13 +211,13 @@ async function processOtt(data) {				// OTT Process LIST
               //   // await conn.rollback();
               // }
               // if (packava != 'NA' && packava != '') {
-                // send activation details.
-                // Step 3 Activate subscription.
-                ottres = await PlayBoxottSubscription(ottdata);
-                console.log('ottresponse', ottres);
-                // ottResponse = ottres;
-                ottstatus = ottres['message'] == 'Pack assigned successfully.' ? 2 : 3;
-                console.log('ottres:', ottres['message'], 'Status', 'Status', ottstatus);
+              // send activation details.
+              // Step 3 Activate subscription.
+              ottres = await PlayBoxottSubscription(ottdata);
+              console.log('ottresponse', ottres);
+              // ottResponse = ottres;
+              ottstatus = ottres['message'] == 'Pack assigned successfully.' ? 2 : 3;
+              console.log('ottres:', ottres['message'], 'Status', 'Status', ottstatus);
 
               // }
 
@@ -150,6 +225,23 @@ async function processOtt(data) {				// OTT Process LIST
 
 
               ott_vendor = ` ,oi.ott_vendor=2 `;
+            }
+            if (ottdata.ott_vendor == 3) {
+              console.log('OTTPLAY---------------------------------------------------');
+              //* Subscription-------
+              const renewResp = await OttPlaySubscription(ottdata)
+              console.log('OTTPLAY ottresponse', renewResp.body);
+              ottres = renewResp.body;
+              // ottres = {
+              //   "success": true,
+              //   "txn_id": "99887766554433",
+              //   "msg": "Plan Activation Successfull"
+              // }
+
+              ottstatus = ottres['success'] == true ? 2 : 3;
+              console.log('ottres:', ottres['msg'], 'Status', 'Status', ottstatus);
+              ott_vendor = ` ,oi.ott_vendor=3 `;
+
             }
             if (ottstatus != '') {
               updateottinvoice = ` UPDATE ott.Ottinvoice oi SET oi.mobile='${ottdata.mobile}',oi.ottstatus=${ottstatus},oi.res_msg='${JSON.stringify(ottres)}',oi.res_date=NOW() ${ott_vendor} WHERE oi.iolid='${ottdata.iolid}' `;
@@ -207,7 +299,7 @@ async function ottSubs(invid) {
   }
 }
 // ottSubs(1430)
-async function dist_renewal(m, gd, uid) {
+async function dist_renewal(m, gd, uid, updateCouponQry = '') {
   console.log('Dist Renewal');
   return new Promise(async (resolve, reject) => {
     var conn = await poolPromise.getConnection(), erroraray = [], addinv = ' INSERT INTO ott.Ottinvoice SET ott_vendor=' + gd.ott_vendor + ',busid=' + m.bid, update_ottusers = '', update_man = '', manstatus = false,
@@ -282,6 +374,7 @@ async function dist_renewal(m, gd, uid) {
         if (gd.mapotttype == 2) {      // GLTV and OTT
           addinv += ` ,platform='${gd.ottplatform}',dayormonth=${gd.ottdayormonth},ottdays=${gd.ottdays},gltvpakname='${gd.packname}',mapgltvid=${gd.mapgltvpackid},mapgltvpackamt=${gd.mapgltvpackamt},mapottid=${gd.mapottpid},ottpackname='${gd.ottplan_name}',ottplancode='${gd.ottplancode}',mapottamt=${gd.mapottamt}`
         }
+        if (gd.isOnlyCouponPlan) addinv += ` ,ottstatus=2 `
         if (m.statestatus == 0) { addinv += `,igst=${m.igst}` }
         if (m.statestatus == 1) { addinv += `,cgst=${m.cgst},sgst=${m.sgst}` }
 
@@ -329,9 +422,14 @@ async function dist_renewal(m, gd, uid) {
               }
             }
             if (manstatus) {
+              if (updateCouponQry) {
+                const updateCouponResp = await conn.query(updateCouponQry, [addinv[0].insertId])
+                console.log('UpdateCoupon response----------------', updateCouponResp);
+              }
               erroraray.push({ msg: 'Account Activated..', error_msg: 0 });
               await conn.commit();
-              ottSubs(addinv[0].insertId);
+              console.log('Coupoaloeeeeeeeeeeee',gd.isOnlyCouponPlan);
+              if (!gd.isOnlyCouponPlan) ottSubs(addinv[0].insertId);
             } else {
               erroraray.push({ msg: 'Please Try After 5 MIN', error_msg: 255 });
               await conn.rollback();
@@ -359,7 +457,7 @@ async function dist_renewal(m, gd, uid) {
     return resolve(erroraray);
   });
 }
-async function sub_dist_renewal(m, gd, uid) {
+async function sub_dist_renewal(m, gd, uid, updateCouponQry = '') {
   console.log('SUb Dist Renewal');
   return new Promise(async (resolve, reject) => {
     var conn = await poolPromise.getConnection(), erroraray = [], addinv = ' INSERT INTO ott.Ottinvoice SET ott_vendor=' + gd.ott_vendor + ', busid=' + m.bid, update_ottusers = '', update_man = '', manstatus = false,
@@ -435,6 +533,8 @@ async function sub_dist_renewal(m, gd, uid) {
         if (gd.mapotttype == 2) {      // GLTV and OTT
           addinv += ` ,platform='${gd.ottplatform}',dayormonth=${gd.ottdayormonth},ottdays=${gd.ottdays},gltvpakname='${gd.packname}',mapgltvid=${gd.mapgltvpackid},mapgltvpackamt=${gd.mapgltvpackamt},mapottid=${gd.mapottpid},ottpackname='${gd.ottplan_name}',ottplancode='${gd.ottplancode}',mapottamt=${gd.mapottamt}`
         }
+        if (gd.isOnlyCouponPlan) addinv += ` ,ottstatus=2 `
+
         if (m.statestatus == 0) { addinv += `,igst=${m.igst}` }
         if (m.statestatus == 1) { addinv += `,cgst=${m.cgst},sgst=${m.sgst}` }
 
@@ -501,9 +601,14 @@ async function sub_dist_renewal(m, gd, uid) {
               }
             }
             if (manstatus) {
+              if (updateCouponQry) {
+                const updateCouponResp = await conn.query(updateCouponQry, [addinv[0].insertId])
+                console.log('UpdateCoupon response----------------', updateCouponResp);
+              }
               erroraray.push({ msg: 'Account Activated..', error_msg: 0 });
               await conn.commit();
-              ottSubs(addinv[0].insertId);
+              console.log('Coupoaloeeeeeeeeeeee',gd.isOnlyCouponPlan);
+              if (!gd.isOnlyCouponPlan) ottSubs(addinv[0].insertId);
               console.log('----------------------Inv ID Send TO OTTSUBS---------------------');
             }
           } else {
@@ -529,7 +634,7 @@ async function sub_dist_renewal(m, gd, uid) {
     return resolve(erroraray);
   });
 }
-async function reseller_renewal(m, gd, uid) {
+async function reseller_renewal(m, gd, uid, updateCouponQry = '') {
   console.log('Reseller');
   return new Promise(async (resolve, reject) => {
     var conn = await poolPromise.getConnection(), erroraray = [], addinv = ' INSERT INTO ott.Ottinvoice SET ott_vendor=' + gd.ott_vendor + ', busid=' + m.bid, update_ottusers = '', update_man = '', manstatus = false,
@@ -593,6 +698,8 @@ async function reseller_renewal(m, gd, uid) {
         if (gd.mapotttype == 2) {      // GLTV and OTT
           addinv += ` ,platform='${gd.ottplatform}',dayormonth=${gd.ottdayormonth},ottdays=${gd.ottdays},gltvpakname='${gd.packname}',mapgltvid=${gd.mapgltvpackid},mapgltvpackamt=${gd.mapgltvpackamt},mapottid=${gd.mapottpid},ottpackname='${gd.ottplan_name}',ottplancode='${gd.ottplancode}',mapottamt=${gd.mapottamt}`
         }
+        if (data.isOnlyCouponPlan) addinv += ` ,ottstatus=2 `
+
         if (m.statestatus == 0) { addinv += `,igst=${m.igst}` }
         if (m.statestatus == 1) { addinv += `,cgst=${m.cgst},sgst=${m.sgst}` }
 
@@ -664,9 +771,14 @@ async function reseller_renewal(m, gd, uid) {
               }
             }
             if (manstatus) {
+              if (updateCouponQry) {
+                const updateCouponResp = await conn.query(updateCouponQry, [addinv[0].insertId])
+                console.log('UpdateCoupon response----------------', updateCouponResp);
+              }
               erroraray.push({ msg: 'Account Activated..', error_msg: 0 });
               await conn.commit();
-              ottSubs(addinv[0].insertId);
+              console.log('Coupoaloeeeeeeeeeeee',gd.isOnlyCouponPlan);
+              if (!gd.isOnlyCouponPlan) ottSubs(addinv[0].insertId);
             }
           } else {
             erroraray.push({ msg: 'Please Try After 5 MIN', error_msg: 591 });
@@ -739,59 +851,159 @@ async function ottuser(m, ipdata) {
           let gd = getdetails[0][0], ioru_user = '';
           if (gd.opstatus == 1) {
             if (gd.mapapstatus == 1) {
-              console.log('getdetails Result :', getdetails[0][0]);
-              let checkottuser = ' SELECT u.*,IF(u.expirydate<NOW(),0,1) gltvexpstatus,IF(u.ottexpirydate<NOW(),0,1) ottexpstatus FROM ott.ottUsers u WHERE u.mobile="' + ipdata.mobile + '" '
-              console.log('checkottuser :', checkottuser);
-              checkottuser = await conn.query(checkottuser);
-              console.log('checkottuser Count', checkottuser[0].length);
-              if (checkottuser[0].length == 1) {                  // User EXISTS
-                console.log('User Exit...');
-                if (gd.mapotttype == 1 && checkottuser[0][0].gltvexpstatus == 0) {        // user expired
-                  console.log('1:0');
-                  let res = await brole(m, gd, checkottuser[0][0].id);
-                  // console.log(res);
-                  erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
-                  // await conn.rollback();
+              // Check Validation and other conditions..
+              let isValid = true, updateCouponQry = '', isUpdateCoupon = false,updateCouponId;
+              if (getdetails[0][0].ott_vendor === 3) { //OTTPLAY
+                let isCouponPlanAvailable = false, isOnlyCouponPlan = false, isCouponPlan1 = false, isCouponPlan2 = false,
+                  isBothCouponPlanAvailable = false;
+                const couponPlans = ['1', '2'];
+                const ottplatform = getdetails[0][0].ottplatform.split(',');
+                console.log('OTTTTTTTTTTTT :\n', ottplatform, ottplatform.length);
+
+                isCouponPlanAvailable = ottplatform.some(plan => couponPlans.includes(plan));
+                isCouponPlan1 = ottplatform.includes('1')
+                isCouponPlan2 = ottplatform.includes('2')
+                isBothCouponPlanAvailable = isCouponPlan1 && isCouponPlan2
+                isOnlyCouponPlan = isCouponPlanAvailable && ottplatform.length === (isBothCouponPlanAvailable ? 2 : 1);
+
+                console.log({ isCouponPlanAvailable, isOnlyCouponPlan, isCouponPlan1, isCouponPlan2, isBothCouponPlanAvailable });
+
+                let ottDetails = getdetails[0][0];
+
+                if (isCouponPlanAvailable) {
+                  // Days or Month Calculation-------------
+                  let couponBaseQry = ' SELECT * FROM ott.coupon_code WHERE ccstatus=0 ';
+                  console.log('daysormonths', ottDetails.ottdayormonth, ottDetails.ottdays);
+                  if (ottDetails.ottdayormonth == 1) { //day
+                    couponBaseQry += ` AND ((validity_type = 2 AND vunit = ${(ottDetails.ottdays <= 90) ? 90 : 365}) 
+                            OR (validity_type = 3 AND vunit = ${(ottDetails.ottdays <= 90) ? 3 : 12}))`;
+
+                  }
+                  if (ottDetails.ottdayormonth == 2) { //month
+                    couponBaseQry += ` AND ((validity_type = 2 AND vunit = ${(ottDetails.ottdays <= 3) ? 90 : 365}) 
+                            OR (validity_type = 3 AND vunit = ${(ottDetails.ottdays <= 3) ? 3 : 12}))`;
+                  }
+                  couponBaseQry += isBothCouponPlanAvailable ? ` AND ottplatform IN (1, 2)` :
+                    isCouponPlan1 ? ` AND ottplatform = 1 ` :
+                      isCouponPlan2 ? ` AND ottplatform = 2 ` : '';
+                  couponBaseQry += isBothCouponPlanAvailable ? '' : ` LIMIT 1 `;
+                  console.log('couponaseQry-------------', couponBaseQry);
+                  const couponDetResp = await conn.query(couponBaseQry);
+                  let [couponDet] = couponDetResp
+                  if (couponDet.length == 0) {
+                    console.log('coupon---------------------');
+                    erroraray.push({ msg: 'Kindly check if the coupon is available.', error_msg: 'COUPON_ERR' });
+                  }
+                  couponDet = !isBothCouponPlanAvailable
+                    ? couponDet
+                    : [
+                      couponDet.find((val) => val.ottplatform === 1),
+                      couponDet.find((val) => val.ottplatform === 2)
+                    ];
+                  console.log('OTTPLAY---------------------------------------------------', couponDet);
+
+                  updateCouponId = couponDet.map((val) => val.ccid);
+                  console.log('id---------------', updateCouponId);
+                  isUpdateCoupon = true
+                  // updateCouponQry = ` UPDATE ott.coupon_code set invid=?,userid=${m.uid},umobile='${m.mobile}',ccstatus=1 WHERE ccid IN (${updateCouponId} )`
+                  gd.isOnlyCouponPlan = isOnlyCouponPlan;
+
                 }
-                if (gd.mapotttype == 1 && checkottuser[0][0].gltvexpstatus == 1) {        // user not Expired
-                  console.log('Pack Not Expired...');
-                  erroraray.push({ msg: 'Pack Not Expired...', error_msg: 677 });
-                  await conn.rollback();
-                }
-                if (gd.mapotttype == 2 && checkottuser[0][0].gltvexpstatus == 0 && checkottuser[0][0].ottexpstatus == 0) {        // user expired
-                  console.log('2:0:0');
-                  let res = await brole(m, gd, checkottuser[0][0].id);
-                  console.log(res);
-                  erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
-                  // await conn.rollback();
-                }
-                if (gd.mapotttype == 2 && (checkottuser[0][0].gltvexpstatus == 1 || checkottuser[0][0].ottexpstatus == 1)) {        // user not Expired
-                  console.log('2:1:1');
-                  console.log('Pack Not Expired...');
-                  erroraray.push({ msg: 'Pack Not Expired...', error_msg: 690 });
-                  await conn.rollback();
+
+                if (!isOnlyCouponPlan) { // Both (Plans and Coupon plans)  OR   (only  plans)
+                  //* Check pack is available or not
+                  const activePlanResp = await getOttPlayActivePlan();
+                  console.log('Response-------', activePlanResp.body);
+                  const planResp = activePlanResp.body;
+                  if (planResp.success != true) {
+                      console.log('suscess-----');
+                      isValid = false;
+                      erroraray.push({ msg: planResp.msg, error_msg: '772' });
+                  }
+                  if (isValid) {
+                    let plans = planResp.activeplans;
+                    let getPlan = plans.find(({ planCode }) => getdetails[0][0].ottplancode == planCode);
+                    console.log('Filtered plans-------', getPlan);
+                    if (!getPlan) {
+                        isValid = false;
+                        erroraray.push({ msg: 'The selected package is unavailable.', error_msg: '778' });
+                    }
+                    //* Check Operator Balance-----
+                    if (isValid) {
+                      const opBalanceResp = await getOttPlayBalance(false);
+                      const planResp = opBalanceResp.body;
+                      console.log('pla---------------', planResp, Number(planResp.balance));
+                      // const planResp = {
+                      //   "success": true,
+                      //   "balance": "1000.00"
+                      // }
+                      if (planResp.success != true || Number(planResp.balance) <= 0 || Number(planResp.balance) < getdetails[0][0].totpamt) {
+                        isValid = false;
+                        erroraray.push({ msg: 'Kindly Check the Operator Balance in OTTPLAY Website', error_msg: '799' });
+                      }
+                    }
+
+                  }
                 }
               }
-              if (checkottuser[0].length == 0) {          // User Not Available...
-                console.log('User Not Available...');
-                ioru_user += ` INSERT INTO ott.ottUsers SET busid=${m.mid},fullname='${ipdata.name}',profileid='${ipdata.profileid}',pwd='${ipdata.password}',user_pwd='${ipdata.user_pwd}'
+              if (isValid) {
+                console.log('getdetails Result :', getdetails[0][0]);
+                let checkottuser = ' SELECT u.*,IF(u.expirydate<NOW(),0,1) gltvexpstatus,IF(u.ottexpirydate<NOW(),0,1) ottexpstatus FROM ott.ottUsers u WHERE u.mobile="' + ipdata.mobile + '" '
+                console.log('checkottuser :', checkottuser);
+                checkottuser = await conn.query(checkottuser);
+                console.log('checkottuser Count', checkottuser[0].length);
+                if (checkottuser[0].length == 1) {                  // User EXISTS
+                  console.log('User Exit...');
+                  if (gd.mapotttype == 1 && checkottuser[0][0].gltvexpstatus == 0) {        // user expired
+                    console.log('1:0');
+                    if (isUpdateCoupon) updateCouponQry = ` UPDATE ott.coupon_code set invid=?,userid=${checkottuser[0][0].id},umobile='${checkottuser[0][0].mobile}',ccstatus=1 WHERE ccid IN (${updateCouponId} )`
+                    let res = await brole(m, gd, checkottuser[0][0].id, updateCouponQry);
+                    // console.log(res);
+                    erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
+                    // await conn.rollback();
+                  }
+                  if (gd.mapotttype == 1 && checkottuser[0][0].gltvexpstatus == 1) {        // user not Expired
+                    console.log('Pack Not Expired...');
+                    erroraray.push({ msg: 'Pack Not Expired...', error_msg: 677 });
+                    await conn.rollback();
+                  }
+                  if (gd.mapotttype == 2 && checkottuser[0][0].gltvexpstatus == 0 && checkottuser[0][0].ottexpstatus == 0) {        // user expired
+                    console.log('2:0:0');
+                    if (isUpdateCoupon) updateCouponQry = ` UPDATE ott.coupon_code set invid=?,userid=${checkottuser[0][0].id},umobile='${checkottuser[0][0].mobile}',ccstatus=1 WHERE ccid IN (${updateCouponId} )`
+                    let res = await brole(m, gd, checkottuser[0][0].id, updateCouponQry);
+                    console.log(res);
+                    erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
+                    // await conn.rollback();
+                  }
+                  if (gd.mapotttype == 2 && (checkottuser[0][0].gltvexpstatus == 1 || checkottuser[0][0].ottexpstatus == 1)) {        // user not Expired
+                    console.log('2:1:1');
+                    console.log('Pack Not Expired...');
+                    erroraray.push({ msg: 'Pack Not Expired...', error_msg: 690 });
+                    await conn.rollback();
+                  }
+                }
+                if (checkottuser[0].length == 0) {          // User Not Available...
+                  console.log('User Not Available...');
+                  ioru_user += ` INSERT INTO ott.ottUsers SET busid=${m.mid},fullname='${ipdata.name}',profileid='${ipdata.profileid}',pwd='${ipdata.password}',user_pwd='${ipdata.user_pwd}'
             ,dob='1994-7-18',cdate=NOW(),mobile='${ipdata.mobile}',mobileverify=1,create_from=2 `
 
-                if (ipdata.email != '' && ipdata.email != null) {
-                  ioru_user += ` ,email='${ipdata.email}',emailverify=1 `
-                }
-                if (ipdata.gender) ioru_user += ` ,gender='${ipdata.gender}' `
-                console.log('ioru_user -------------------\n', ioru_user);
-                ioru_user = await conn.query(ioru_user);
-                if (ioru_user[0].affectedRows == 1) {
-                  await conn.commit();
-                  console.log('OTT User ID', ioru_user[0].insertId);
-                  let res = await brole(m, gd, ioru_user[0].insertId);
-                  erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
-                  await conn.rollback();
-                } else {
-                  erroraray.push({ msg: 'Can Not Create Account to "' + ipdata.mobile + '"', error_msg: 712 });
-                  await conn.rollback();
+                  if (ipdata.email != '' && ipdata.email != null) {
+                    ioru_user += ` ,email='${ipdata.email}',emailverify=1 `
+                  }
+                  if (ipdata.gender) ioru_user += ` ,gender='${ipdata.gender}' `
+                  console.log('ioru_user -------------------\n', ioru_user);
+                  ioru_user = await conn.query(ioru_user);
+                  if (ioru_user[0].affectedRows == 1) {
+                    await conn.commit();
+                    console.log('OTT User ID', ioru_user[0].insertId);
+                    if (isUpdateCoupon) updateCouponQry = ` UPDATE ott.coupon_code set invid=?,userid=${ioru_user[0].insertId},umobile='${ipdata.mobile}',ccstatus=1 WHERE ccid IN (${updateCouponId} )`
+                    let res = await brole(m, gd, ioru_user[0].insertId, updateCouponQry);
+                    erroraray.push({ msg: res[0].msg, error_msg: res[0].error_msg });
+                    await conn.rollback();
+                  } else {
+                    erroraray.push({ msg: 'Can Not Create Account to "' + ipdata.mobile + '"', error_msg: 712 });
+                    await conn.rollback();
+                  }
                 }
               }
             } else {
@@ -915,4 +1127,4 @@ async function delay(ms) {
   return await new Promise(resolve => setTimeout(resolve, ms));
 }
 
-module.exports = { gltvapi, activeaccount,pbcheckavapack };
+module.exports = { gltvapi, activeaccount, pbcheckavapack };

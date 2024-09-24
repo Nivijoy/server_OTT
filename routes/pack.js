@@ -34,12 +34,18 @@ pack.post('/getOtt', (req, res, err) => {
 pack.post('/listAllowPack', (req, res, err) => {
     const jwt_ott = req.ott_data;
     var data = req.body, sql, sqlquery, sqlc, value = [], where = [];
+    // ,CONCAT(COALESCE(ot.ottplan_name,''),' ',op.packname,'(',ot.ottplancode,')') packs,  
     sqlquery = ` SELECT p.id,p.manid,p.gltvpackid,p.gltvpackamt,p.gltvdaytype,p.gltvdays,p.ottpid,p.ottpamt,p.taxtype,p.otttype,p.apstatus,ot.ottplan_name,op.packname,m.bname
-    ,CONCAT(COALESCE(ot.ottplan_name,''),' ',op.packname) packs,ot.dayormonth,ot.days,p.ott_vendor FROM ott.managersallowedpack p LEFT JOIN ott.ottplan ot ON p.ottpid = ot.ottplanid LEFT JOIN ott.package op ON op.pack_id = p.gltvpackid 
-    LEFT JOIN ott.managers m ON p.manid = m.mid `;
+    ,IF(p.ottpid=0 OR p.ottpid IS NULL ,op.packname,
+    CONCAT(IFNULL(ot.ottplan_name,' '),' ','(',IFNULL(ot.ottplancode,' '),')',op.packname,'(',v.vendors_name,')')) packs,
+    ot.dayormonth,ot.days,p.ott_vendor,
+    IF(p.taxtype=1, (p.ottpamt+p.gltvpackamt),((p.ottpamt-(p.ottpamt*18/(100+18)))+(p.gltvpackamt-(p.gltvpackamt*18/(100+18)))) ) oamt,
+    IF(p.taxtype=0, (p.ottpamt*18/(100+18)+p.gltvpackamt*18/(100+18)),((p.ottpamt*18/100)+(p.gltvpackamt*18/100))) otaxamt
+     FROM ott.managersallowedpack p LEFT JOIN ott.ottplan ot ON p.ottpid = ot.ottplanid LEFT JOIN ott.package op ON op.pack_id = p.gltvpackid 
+    LEFT JOIN ott.managers m ON p.manid = m.mid INNER JOIN ott.ott_vendors v ON v.ovid=p.ott_vendor `;
 
     sqlc = ` SELECT COUNT(*) \`count\` FROM ott.managersallowedpack p LEFT JOIN ott.ottplan ot ON p.ottpid = ot.ottplanid
-     LEFT JOIN ott.package op ON op.pack_id = p.gltvpackid LEFT JOIN ott.managers m ON p.manid = m.mid `;
+     LEFT JOIN ott.package op ON op.pack_id = p.gltvpackid LEFT JOIN ott.managers m ON p.manid = m.mid INNER JOIN ott.ott_vendors v ON v.ovid=p.ott_vendor `;
 
     if (data.hasOwnProperty('id') && data.id) {
         where.push(' p.id =' + data.id)
@@ -48,23 +54,26 @@ pack.post('/listAllowPack', (req, res, err) => {
         where.push(' p.manid =' + data.manid)
     }
     if (data.hasOwnProperty('ott_plan') && data.ott_plan) {
-        where.push(' p.ottpid =' + data.ott_plan)
+        where.push(' p.ottpid =' + data.ott_plan)   
     }
     if (data.hasOwnProperty('taxtype') && data.taxtype) {
         where.push(' p.taxtype =' + data.taxtype)
     }
     if (data.hasOwnProperty('status') && data.status) {
         where.push(' p.apstatus =' + data.status)
+    } else {
+        where.push(' p.apstatus = 1')
     }
-    if(data.hasOwnProperty('ott_vendor') && data.ott_vendor){
+    if (data.hasOwnProperty('ott_vendor') && data.ott_vendor) {
         where.push(` p.ott_vendor = ${data.ott_vendor}`)
     }
     if (jwt_ott.role == 777 || jwt_ott.role == 666 || jwt_ott.role == 555) {
         where.push(' p.manid =' + jwt_ott.id)
     }
     if (data.hasOwnProperty('like') && data.like) {
-        where.push('(CONCAT(ot.ottplan_name," ",op.packname) LIKE "%' + data.like + '%" OR CONCAT(op.packname," ",ot.ottplan_name) LIKE "%' + data.like + '%" )');
+        where.push('(CONCAT(ot.ottplan_name," ",op.packname," ",ot.`ottplancode`) LIKE "%' + data.like + '%" OR CONCAT(op.packname," ",ot.ottplan_name," ",ot.`ottplancode`) LIKE "%' + data.like + '%" OR op.packname LIKE "%' + data.like + '%" )');
     }
+    where.push(`ot.status = 1`)
     where = where.length > 0 ? 'WHERE' + where.join(' AND ') : ''
     sqlquery += where; sqlc += where;
 
@@ -100,7 +109,10 @@ pack.post('/getottplanname', (req, res, err) => {
     const jwt_data = req.jwt_data;
     var data = req.body, sqlquery, sql;
     console.log('Data', data)
-    sqlquery = ' SELECT GROUP_CONCAT(op.`ott_platform`) ottname FROM ott.`ottplan` p, ott.`OTT_platforms` op WHERE FIND_IN_SET(op.`ott_id`,p.`ottplatform`) ';
+    sqlquery = ' SELECT GROUP_CONCAT(op.`ott_platform`) ottname,p.ottamount, ' +
+        ' IF(p.otttaxtype=1, p.ottamount,(p.ottamount-(p.ottamount*18/(100+18))) ) oamt, ' +
+        ' IF(p.otttaxtype=0, p.ottamount*18/(100+18),(p.ottamount*18/100)) otaxamt ' +
+        ' FROM ott.`ottplan` p, ott.`OTT_platforms` op WHERE FIND_IN_SET(op.`ott_id`,p.`ottplatform`) AND p.status = 1 ';
     if (data.ottplanid) sqlquery += ` AND p.ottplanid = ${data.ottplanid}`
     // if (data.packid) sqlquery += ` AND p.ottplanid = (SELECT ottplan FROM bms.services_price WHERE id =${data.packid})`
     // if (data.invid) sqlquery += ` AND p.ottplanid =(SELECT ottplanid FROM bms.user_invoice WHERE invid = ${data.invid})`
@@ -165,47 +177,48 @@ async function packMap(req) {
                 let status = false;
                 await conn.beginTransaction();
                 try {
-                    // console.log('PackMap Data------------', pack);
-                    let plancheckQuery = ` SELECT * FROM ott.managersallowedpack WHERE ottpid =(SELECT ottplanid FROM ott.ottplan WHERE ottplan_name='${pack.ottpid}' AND manid=${data.manid}) `
+                    console.log('PackMap Data------------', pack);
+                    pack.ottpid=pack.ottpid.trim()
+                    let plancheckQuery = ` SELECT * FROM ott.managersallowedpack WHERE ottpid =(SELECT ottplanid FROM ott.ottplan WHERE TRIM(ottplan_name) = TRIM('${pack.ottpid}') AND manid=${data.manid}) `
                     let [[planResult]] = await conn.query(plancheckQuery)
-                    if(planResult){
+                    if (planResult) {
                         errorarray.push({ msg: `OTT Plan:${pack.ottpid} Already Mapped`, error_msg: '169' });
                         await conn.rollback(); continue;
-                    }else{
-                    if (pack.otttype == 2 && (!pack.ottpid || !pack.ottpamt)) {
-                        status = true;
-                        errorarray.push({ msg: 'Please Fill Ottplan or Amount', error_msg: '173' });
-                        await conn.rollback(); continue;
-                    }
-                    if (!status) {
-                        let sqlquery = ` INSERT INTO ott.managersallowedpack SET manid=${data.manid},gltvpackid=${pack.gltvpackid},gltvpackamt=${pack.gltvpackamt},
+                    } else {
+                        if (pack.otttype == 2 && (!pack.ottpid || !pack.ottpamt)) {
+                            status = true;
+                            errorarray.push({ msg: 'Please Fill Ottplan or Amount', error_msg: '173' });
+                            await conn.rollback(); continue;
+                        }
+                        if (!status) {
+                            let sqlquery = ` INSERT INTO ott.managersallowedpack SET manid=${data.manid},gltvpackid=${pack.gltvpackid},gltvpackamt=${pack.gltvpackamt},
                     gltvdaytype=${pack.gltvdaytype},gltvdays=${pack.gltvdays},taxtype=${pack.taxtype},otttype=${pack.otttype},cby=${jwtott.id},ott_vendor=${data.ott_vendor} `
 
-                        if (pack.otttype == 2) {
-                            sqlquery += ` ,ottpid =(SELECT ottplanid FROM ott.ottplan WHERE ottplan_name='${pack.ottpid}'),ottpamt=${pack.ottpamt} `
-                        }
-                        console.log('PackMap Query', sqlquery);
-                        let result = await conn.query(sqlquery);
-                        if (result[0]['affectedRows'] > 0 && result[0]['insertId'] > 0) {
-                            let logData = JSON.stringify(pack)
-                            let sqllog = " INSERT into ott.activity_log SET fname= 'PACK MAPPING' ,`idata`= '" + logData + "',cby= " + jwtott.id + ",role=" + jwtott.role;
-                            let resultlog = await conn.query(sqllog);
-                            console.log(resultlog[0]['affectedRows']);
-                            if (resultlog[0]['affectedRows'] > 0) {
-                                errorarray.push({ msg: "PackName Added Successfully", error_msg: 0 });
-                                await conn.commit();
+                            if (pack.otttype == 2) {
+                                sqlquery += ` ,ottpid =(SELECT ottplanid FROM ott.ottplan WHERE TRIM(ottplan_name) = TRIM('${pack.ottpid}')),ottpamt=${pack.ottpamt} `
+                            }
+                            console.log('PackMap Query', sqlquery);
+                            let result = await conn.query(sqlquery);
+                            if (result[0]['affectedRows'] > 0 && result[0]['insertId'] > 0) {
+                                let logData = JSON.stringify(pack)
+                                let sqllog = " INSERT into ott.activity_log SET fname= 'PACK MAPPING' ,`idata`= '" + logData + "',cby= " + jwtott.id + ",role=" + jwtott.role;
+                                let resultlog = await conn.query(sqllog);
+                                console.log(resultlog[0]['affectedRows']);
+                                if (resultlog[0]['affectedRows'] > 0) {
+                                    errorarray.push({ msg: "PackName Added Successfully", error_msg: 0 });
+                                    await conn.commit();
+                                } else {
+                                    errorarray.push({ msg: "Please Try After Sometime.", error_msg: 154 });
+                                    await conn.rollback();
+                                    continue;
+                                }
                             } else {
-                                errorarray.push({ msg: "Please Try After Sometime.", error_msg: 154 });
+                                errorarray.push({ msg: 'Please Try After Sometime', error_msg: '49' });
                                 await conn.rollback();
                                 continue;
                             }
-                        } else {
-                            errorarray.push({ msg: 'Please Try After Sometime', error_msg: '49' });
-                            await conn.rollback();
-                            continue;
                         }
                     }
-                }
 
 
                 } catch (e) {
@@ -369,14 +382,14 @@ async function addOTTPlan(req) {
                 try {
                     let plan = data.bulkOTTdata[i];
                     console.log('OTTPLAN', plan);
-                    let sqlcount = ' SELECT EXISTS(SELECT * FROM ott.ottplan WHERE ottplancode=? ) `count` ';
-                    console.log('Plancode Count Query', sqlcount);
-                    let [[rcount]] = await conn.query(sqlcount, plan.ottplancode);
-                    if (rcount['count'] != 0) {
-                        errorarray.push({ msg: " OTTPlanCode   '" + plan.ottplancode + "' Already Exists", error_msg: '191' });
-                        await conn.rollback();
-                        continue;
-                    } else {
+                    // let sqlcount = ' SELECT EXISTS(SELECT * FROM ott.ottplan WHERE ottplancode=? ) `count` ';
+                    // console.log('Plancode Count Query', sqlcount);
+                    // let [[rcount]] = await conn.query(sqlcount, plan.ottplancode);
+                    // if (rcount['count'] != 0) {
+                    //     errorarray.push({ msg: " OTTPlanCode   '" + plan.ottplancode + "' Already Exists", error_msg: '191' });
+                    //     await conn.rollback();
+                    //     continue;
+                    // } else {
                         plan.status = plan.status == true ? 1 : 0;
                         let sqlplan = ` INSERT INTO ott.ottplan SET ottplan_name='${plan.ottplan_name}',ottplancode='${plan.ottplancode}',
                          otttaxtype=${plan.otttaxtype},ottamount=${plan.ottamount},ottplatform='${plan.ottplatform}',dayormonth=${plan.dayormonth},
@@ -400,7 +413,7 @@ async function addOTTPlan(req) {
                             continue;
                         }
                         // }
-                    }
+                    // }
 
                 } catch (e) {
                     console.log('Inside Catch Error', e);
@@ -432,13 +445,13 @@ async function editOTTPlan(req) {
             try {
                 let plan = data.bulkOTTdata[0];
                 console.log('OTTPLAN', plan);
-                let sqlcount = ' SELECT EXISTS(SELECT * FROM ott.ottplan WHERE ottplanid = ? ) `count` ';
-                console.log('Plancode Count Query', sqlcount);
-                let [[rcount]] = await conn.query(sqlcount, plan.id);
-                if (rcount['count'] == 0) {
-                    errorarray.push({ msg: " OTTPlanCode   '" + plan.ottplancode + "' Not Exists", error_msg: '303' });
-                    await conn.rollback();
-                } else {
+                // let sqlcount = ' SELECT EXISTS(SELECT * FROM ott.ottplan WHERE ottplanid = ? ) `count` ';
+                // console.log('Plancode Count Query', sqlcount);
+                // let [[rcount]] = await conn.query(sqlcount, plan.id);
+                // if (rcount['count'] == 0) {
+                //     errorarray.push({ msg: " OTTPlanCode   '" + plan.ottplancode + "' Not Exists", error_msg: '303' });
+                //     await conn.rollback();
+                // } else {
                     plan.status = plan.status == true ? 1 : 0;
                     let sqlplan = ` UPDATE ott.ottplan SET ottplan_name='${plan.ottplan_name}',ottplancode='${plan.ottplancode}',
                          otttaxtype=${plan.otttaxtype},ottamount=${plan.ottamount},ottplatform='${plan.ottplatform}',dayormonth=${plan.dayormonth},
@@ -459,7 +472,7 @@ async function editOTTPlan(req) {
                         errorarray.push({ msg: 'Please Try After Sometimes', error_msg: '315' });
                         await conn.rollback();
                     }
-                }
+                // }
 
             } catch (e) {
                 console.log('Inside Catch Error', e);
@@ -569,14 +582,14 @@ pack.post('/showOTTPlan', function (req, res) {
 pack.post('/showOTTPlanName', function (req, res, err) {   // Show OTTplan Name and code 
     const jwt_data = req.jwt_data
     let data = req.body, sql, sqlquery;
-    sqlquery = ` SELECT o.ottplanid,o.ottplan_name,o.ottplancode,o.ott_vendor FROM ott.ottplan o WHERE status = 1`
+    sqlquery = ` SELECT o.ottplanid,o.ottplan_name,o.ottplancode,o.ott_vendor FROM ott.ottplan o WHERE status IN (1,0)`
     if (data.hasOwnProperty('like') && data.like != '') {  // Plan name
         sqlquery += ` AND o.ottplancode LIKE '%${data.like}%'`
     }
     if (data.hasOwnProperty('c_like') && data.c_like != '') {  // Plan Code
         sqlquery += ` AND o.ottplan_name LIKE '%${data.c_like}%'`
     }
-   
+
     console.log('ShowOTTPlan name', sqlquery);
     pool.getConnection(function (err, conn) {
         if (err) {

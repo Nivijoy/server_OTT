@@ -1,4 +1,4 @@
-async function bankhtml(d,res) {
+async function bankhtml(d, res) {
     return new Promise(async (resolve, reject) => {
         console.log('data', d)
         if (d.gwid == 1) {
@@ -14,11 +14,10 @@ async function bankhtml(d,res) {
             resolve({ ldata: ldata, error_status: 0 });
             // resolve({ url:d.payurl,hash:hash, error_status: 0 });
 
-         }
+        }
     });
 }
 
 module.exports.bankhtml = bankhtml;
 
 
- 

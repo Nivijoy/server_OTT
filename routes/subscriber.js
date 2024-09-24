@@ -98,12 +98,14 @@ async function addSubscriber(req) {
                         await conn.rollback();
                     }
                     if (!mstatus) {
-                        let esql = ` SELECT COUNT(*) tot1 FROM ott.\`ottUsers\` WHERE email ='${data.email}' `
-                        let [eresult] = await conn.query(esql)
-                        if (eresult[0].tot1 > 0) {
-                            estatus = true;
-                            errorarray.push({ msg: 'Email ID Already Exists', error_msg: '69' });
-                            await conn.rollback();
+                        if (data.email) {
+                            let esql = ` SELECT COUNT(*) tot1 FROM ott.\`ottUsers\` WHERE email ='${data.email}' `
+                            let [eresult] = await conn.query(esql)
+                            if (eresult[0].tot1 > 0) {
+                                estatus = true;
+                                errorarray.push({ msg: 'Email ID Already Exists', error_msg: '69' });
+                                await conn.rollback();
+                            }
                         }
                         if (!mstatus && !estatus) {
                             if ((data.role == 1 && jwtott.role > 777) || jwtott.role == 777) {
@@ -132,8 +134,10 @@ async function addSubscriber(req) {
                             if (!status) {
                                 data.ustatus = data.ustatus == true ? 1 : 0;
                                 sqlquery = ` INSERT INTO ott.ottUsers SET profileid ='${data.profileid}',fullname='${data.fullname}',pwd=md5('${data.pwd}'),user_pwd='${data.pwd}',
-                         gender=${data.gender},dob=DATE_FORMAT(STR_TO_DATE('${data.dob}',"%Y-%m-%dT%H:%i:%s.000Z"),"%Y-%m-%d"),ustatus=${data.ustatus},cby=${jwtott.id},mobile='${data.mobile}' `
-                                if (data.email) sqlquery += `,email='${data.email}' `
+                         ustatus=${data.ustatus},cby=${jwtott.id},mobile='${data.mobile}' `
+                                if (data.email) sqlquery += ` ,email='${data.email}' `
+                                if (data.gender) sqlquery += ` ,gender=${data.gender}`
+                                if (data.dob) sqlquery += ` ,dob=DATE_FORMAT(STR_TO_DATE('${data.dob}',"%Y-%m-%dT%H:%i:%s.000Z"),"%Y-%m-%d")`
                                 if (sqlc != '') sqlquery += sqlc;
                                 console.log('User Insert Query----', sqlquery)
                                 let result = await conn.query(sqlquery)
@@ -201,6 +205,7 @@ async function editSubscriber(req) {
                             await conn.rollback();
                         }
                         if (!mstatus) {
+                            if(data.email){
                             let esql = ` SELECT COUNT(*) tot1 FROM ott.\`ottUsers\` WHERE email ='${data.email}' AND id != ${data.id} `
                             console.log(esql)
                             let [eresult] = await conn.query(esql)
@@ -210,6 +215,7 @@ async function editSubscriber(req) {
                                 errorarray.push({ msg: 'Email ID Already Exists', error_msg: '69' });
                                 await conn.rollback();
                             }
+                        }
                             if (!mstatus && !estatus) {
                                 if ((data.role == 1 && jwtott.role > 777) || jwtott.role == 777) {
                                     let distid = jwtott.role == 777 ? jwtott.id : data.dmid
@@ -235,10 +241,13 @@ async function editSubscriber(req) {
                                 if (!status) {
                                     data.ustatus = data.ustatus == true ? 1 : 0;
                                     sqlquery = ` UPDATE ott.ottUsers SET profileid ='${data.profileid}',fullname='${data.fullname}',
-                     gender=${data.gender},dob=DATE_FORMAT(STR_TO_DATE('${data.dob}',"%Y-%m-%dT%H:%i:%s.000Z"),"%Y-%m-%d"),ustatus=${data.ustatus},mby=${jwtott.id},mdate=NOW(),mobile='${data.mobile}' `
+                     ustatus=${data.ustatus},mby=${jwtott.id},mdate=NOW(),mobile='${data.mobile}' `
                                     if (sdata.mobile != data.mobile) sqlquery += ` ,mobileverify = 0 `
                                     if (sdata.email != data.email) sqlquery += ` ,emailverify = 0 `
-                                    if (data.email) sqlquery += `,email='${data.email}' `
+                                    if (data.email) sqlquery += ` ,email='${data.email}' `
+                                    if(data.gender) sqlquery += ` ,gender=${data.gender} `
+                                    if(data.dob) sqlquery += ` ,dob=DATE_FORMAT(STR_TO_DATE('${data.dob}',"%Y-%m-%dT%H:%i:%s.000Z"),"%Y-%m-%d")`
+                                    else sqlquery += ` ,dob=null`
                                     if (sqlc != '') sqlquery += sqlc;
                                     sqlquery += ` WHERE id =${data.id}`
                                     console.log('User Update Query----', sqlquery)
@@ -407,7 +416,7 @@ subs.post('/getUser', function (req, res) {
                 console.log('connection Closed.');
                 conn.release();
                 if (!err) {
-                    // console.log('Result', result)
+                    console.log('Result', result)
                     res.json(result[0]);
                 }
             });
@@ -417,78 +426,78 @@ subs.post('/getUser', function (req, res) {
 
 
 async function changeValidity(req) {
-	return new Promise(async (resolve, reject) => {
-		const ott_data = req.ott_data
-		var data = req.body, sqlquery, erroraray = [];
-		let conn = await poolPromise.getConnection();
-		if (conn) {
- 				await conn.beginTransaction();
-				try {
-					let custvalidity = data.validity, oldcustdata, addlog = '';
-					console.log("Validity", custvalidity)
-					sqlquery = ' SELECT u.ottexpirydate FROM ott.ottUsers u WHERE u.id =' + data.id;
-					console.log("Get Cust validity query", sqlquery)
-					let result = await conn.query(sqlquery)
-					if (result[0].length > 0) {
-						oldcustdata = result[0][0]
-						let expiry = new Date(custvalidity)
-						expiry.setTime(Math.floor((expiry.getTime()) + (5 * 3600 * 1000 + 1800000)))
-						let expiry_date = ((expiry).toISOString().replace(/T/, ' ').replace(/\..+/, '')).slice(0, 16);
-						sqlquery = " UPDATE ott.ottUsers SET expirydate ='" + expiry_date + "',ottexpirydate ='" + expiry_date + "',mdate=NOW(),mby=" + ott_data.id + " WHERE id=" + data.id
-						console.log("Update Service Query", sqlquery)
-						sqlquery = await conn.query(sqlquery)
-						if (sqlquery[0]['affectedRows'] > 0) {
-							if (oldcustdata.ottexpirydate != custvalidity) {
-								let exp_date = moment.utc(oldcustdata.ottexpirydate).format('MM/DD/YY');
-								addlog += 'Subscriber ID: "' + data.id + '" Validity Changed From "' + exp_date + '" to "' + expiry_date + '" Done by'
-							}
-							if (addlog == '') { addlog += 'DONE BY' }
-							let sqllog = ' INSERT INTO ott.activity_log SET ' +
-								" fname = " + "'CHANGE SUBSCRIBER VALIDITY ID:"+data.id+"'" + ",`idata` ='" + addlog + "',remarks='"+ data.reason +"',cby =" + ott_data.id;
-							console.log("Log Query", sqllog)
-							let resultlog = await conn.query(sqllog);
-							if (resultlog[0]['affectedRows'] > 0) {
-								await conn.commit();
-								console.log("Updated Customer Validity")
-								erroraray.push({ msg: "Validity Updated.", error_msg: 0 });
-							} else {
-								erroraray.push({ msg: "Internal Error.", error_msg: 'IER' });
-								await conn.rollback();
- 							}
+    return new Promise(async (resolve, reject) => {
+        const ott_data = req.ott_data
+        var data = req.body, sqlquery, erroraray = [];
+        let conn = await poolPromise.getConnection();
+        if (conn) {
+            await conn.beginTransaction();
+            try {
+                let custvalidity = data.validity, oldcustdata, addlog = '';
+                console.log("Validity", custvalidity)
+                sqlquery = ' SELECT u.ottexpirydate FROM ott.ottUsers u WHERE u.id =' + data.id;
+                console.log("Get Cust validity query", sqlquery)
+                let result = await conn.query(sqlquery)
+                if (result[0].length > 0) {
+                    oldcustdata = result[0][0]
+                    let expiry = new Date(custvalidity)
+                    expiry.setTime(Math.floor((expiry.getTime()) + (5 * 3600 * 1000 + 1800000)))
+                    let expiry_date = ((expiry).toISOString().replace(/T/, ' ').replace(/\..+/, '')).slice(0, 16);
+                    sqlquery = " UPDATE ott.ottUsers SET expirydate ='" + expiry_date + "',ottexpirydate ='" + expiry_date + "',mdate=NOW(),mby=" + ott_data.id + " WHERE id=" + data.id
+                    console.log("Update Service Query", sqlquery)
+                    sqlquery = await conn.query(sqlquery)
+                    if (sqlquery[0]['affectedRows'] > 0) {
+                        if (oldcustdata.ottexpirydate != custvalidity) {
+                            let exp_date = moment.utc(oldcustdata.ottexpirydate).format('MM/DD/YY');
+                            addlog += 'Subscriber ID: "' + data.id + '" Validity Changed From "' + exp_date + '" to "' + expiry_date + '" Done by'
+                        }
+                        if (addlog == '') { addlog += 'DONE BY' }
+                        let sqllog = ' INSERT INTO ott.activity_log SET ' +
+                            " fname = " + "'CHANGE SUBSCRIBER VALIDITY ID:" + data.id + "'" + ",`idata` ='" + addlog + "',remarks='" + data.reason + "',cby =" + ott_data.id;
+                        console.log("Log Query", sqllog)
+                        let resultlog = await conn.query(sqllog);
+                        if (resultlog[0]['affectedRows'] > 0) {
+                            await conn.commit();
+                            console.log("Updated Customer Validity")
+                            erroraray.push({ msg: "Validity Updated.", error_msg: 0 });
+                        } else {
+                            erroraray.push({ msg: "Internal Error.", error_msg: 'IER' });
+                            await conn.rollback();
+                        }
 
-						} else {
-							console.log("Query Failed to execute")
-							erroraray.push({ msg: "Internal Error", error_msg: 'IER' });
-							await conn.rollback();
- 						}
-					} else {
-						console.log("Query Failed to execute")
-						erroraray.push({ msg: "Internal Error", error_msg: 'IER' });
-						await conn.rollback();
- 					}
-				} catch (e) {
-					console.log('Error ', e)
-					await conn.rollback();
-				}
- 			console.log('Success--1');
-			console.log('errorrrrrr', erroraray)
-			// await conn.commit();
-			conn.release()
-			console.log('connection Closed.');
-		} else {
-			return;
-		}
-		console.log('success--2');
-		return resolve(erroraray);
-	});
+                    } else {
+                        console.log("Query Failed to execute")
+                        erroraray.push({ msg: "Internal Error", error_msg: 'IER' });
+                        await conn.rollback();
+                    }
+                } else {
+                    console.log("Query Failed to execute")
+                    erroraray.push({ msg: "Internal Error", error_msg: 'IER' });
+                    await conn.rollback();
+                }
+            } catch (e) {
+                console.log('Error ', e)
+                await conn.rollback();
+            }
+            console.log('Success--1');
+            console.log('errorrrrrr', erroraray)
+            // await conn.commit();
+            conn.release()
+            console.log('connection Closed.');
+        } else {
+            return;
+        }
+        console.log('success--2');
+        return resolve(erroraray);
+    });
 }
 
 subs.post('/changeValidity', async (req, res) => {
-	req.setTimeout(864000000);
-	// console.log('result----', req.body);
-	let result = await changeValidity(req);
-	console.log("Process Completed For Change Validity", result);
-	res.end(JSON.stringify(result));
+    req.setTimeout(864000000);
+    // console.log('result----', req.body);
+    let result = await changeValidity(req);
+    console.log("Process Completed For Change Validity", result);
+    res.end(JSON.stringify(result));
 });
 
 

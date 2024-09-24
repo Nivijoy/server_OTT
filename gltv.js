@@ -2,7 +2,7 @@ var fs = require('fs');
 var http = require('http');
 const path = require('path');
 
-const IP = '192.168.101.158', port = '2003'; //Home
+const IP = '192.168.113.158', port = '2003'; //Home
 
 const express = require('express');
 app = express();
@@ -18,14 +18,16 @@ const channel = require('./routes/channel'),
     user = require('./routes/user'),
     genre = require('./routes/genre'),
     lang = require('./routes/lang'),
-    { pagltvapiy, activeaccount,pbcheckavapack } = require('./routes/gltvapi');
-prehandler = require('./routes/prehandler'),
+    { pagltvapiy, activeaccount, pbcheckavapack } = require('./routes/gltvapi');
+    prehandler = require('./routes/prehandler'),
     rtoken = require('./routes/renewtoken'),
     subs = require('./routes/subscriber'),
     operation = require('./routes/operations'),
     account = require('./routes/account'),
     dashboard = require('./routes/dashboard'),
-    cors = require('cors');
+    cors = require('cors'),
+    cron=require('./routes/cron'),
+    ottplaycode = require('./routes/ottplaycode');
 
 
 //const ErrorHandler = require('./handler/errorHandler')
@@ -90,6 +92,9 @@ app.use('/operation', operation);
 app.use('/account', account);
 app.use('/api/dashboard', dashboard);
 app.use('/pay', pay);
+app.use('/api/ottplaycode',ottplaycode);
+app.use('/api/cron', cron);
+
 
 //app.use(ErrorHandler);
 // const httpsServer = http.createServer(credentials, app);

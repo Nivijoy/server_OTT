@@ -30,5 +30,15 @@
         "getplan": "https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/",
         "planactivation":"https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/assignPack",
         "getsubscription": "https://8fjpx02rmk.execute-api.ap-south-1.amazonaws.com/prod/v3/getPack?partnerKey="
+    },
+    "ottplay":{
+        "login_id":"blue.lotus_isp",
+        "api_token":"plHxsNg62bL0UJhhYKBU2CvdYpf3DL0PcceKL4TxTu43FWixVGPlKYHDJ1ignIrheA7F8QvfmZo6uMo9DKArElYdzpZuNcp3p03sVXGu5EmHYwI53Qg6Xdq24mSbwnUsG9JhGSMe6vKduO87EzH4OtwDfiYsA2NntCrO4WTe2Ycw9vq5Sgrsuxfv1wJkpnvMp1Sl9M3vdlV2s6lCV6dtFA4jxk6i7ybRG1ZqDZa56shyqtw4uoeZuoE2qrmqP5S",
+        "operCode":"13599",
+        "url":"https://associates.ottplay.com/api"
+    },
+    "sms_template":{
+        "tempno":"1707172163357570005",
+        "template":"Dear Subscriber, Use the referral Code {CODE} and Enjoy {PLATFORM} subscriptions for {UNIT} months with Blue Lotus - Limras Eronet"
     }
 }

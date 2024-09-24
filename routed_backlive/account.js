@@ -15,14 +15,14 @@ account.post('/listInvoice', (req, res, err) => {
     sqlquery = ` SELECT inv.iolid,inv.busid,inv.dmid,inv.sdmid,inv.mid,inv.uid,inv.bshare,inv.dshare,inv.mshare,inv.bamt,inv.damt,inv.sdamt,
     inv.mamt,inv.dayormonth,inv.ottdays,inv.taxtype,inv.ottamount,inv.manottamt,inv.ottstatus,inv.cby,inv.cdate,
     inv.res_msg,inv.res_date,inv.gltvpakname,inv.ottpackname,inv.ottplancode,inv.totinvamt,inv.totinvtaxamt,(inv.totinvamt + inv.totinvtaxamt) total,
-    u.profileid,u.role_type,u.expirydate,u.ottexpirydate,u.mobile,inv.res_msg,
-    IF(inv.dayormonth = 1 ,inv.cdate + INTERVAL inv.ottdays DAY,inv.cdate + INTERVAL inv.ottdays MONTH) ottexp_date,
+    u.profileid,u.role_type,u.expirydate,u.ottexpirydate,u.mobile,inv.res_msg,inv.mapottid,
+    IF(inv.dayormonth = 1 ,inv.cdate + INTERVAL inv.ottdays DAY,inv.cdate + INTERVAL inv.ottdays MONTH) ottexp_date,inv.ott_vendor,
     (CASE WHEN u.role_type = 1 THEN (SELECT bname FROM ott.managers d WHERE d.mid =u.dmid)
       WHEN u.role_type = 2 THEN (SELECT bname FROM ott.managers s WHERE s.mid =u.sdmid)
       WHEN u.role_type = 3 THEN (SELECT bname FROM ott.managers m WHERE m.mid =u.mid)  
        END) manager,
        (CASE WHEN inv.platform THEN (SELECT GROUP_CONCAT(op.ott_platform) FROM ott.OTT_platforms op WHERE FIND_IN_SET(op.ott_id,inv.platform))
-       END) platforms
+       END) platforms,inv.beforedetection,inv.detectedamt,inv.pay_status
     FROM ott.Ottinvoice inv LEFT JOIN ott.ottUsers u ON inv.uid = u.id `
 
     sqlc = ` SELECT COUNT(*) \`count\` FROM ott.Ottinvoice inv LEFT JOIN ott.ottUsers u ON inv.uid = u.id `;
@@ -35,6 +35,9 @@ account.post('/listInvoice', (req, res, err) => {
     }
     if (data.hasOwnProperty('status') && data.status) {
         where.push(' inv.ottstatus =' + data.status)
+    }
+    if (data.hasOwnProperty('ott_vendor') && data.ott_vendor) {
+        where.push(' inv.ott_vendor =' + data.ott_vendor)
     }
     if (data.hasOwnProperty('start_date') && data.start_date != '' && data.hasOwnProperty('end_date') && data.end_date != '') {
 		where.push(' DATE_FORMAT(inv.cdate,"%Y-%m-%d") >= "' + data.start_date + '" AND  DATE_FORMAT(inv.cdate,"%Y-%m-%d %hh:%mm:%ss")<= "' + data.end_date + " 23:59:59 " + '" ');
@@ -78,11 +81,13 @@ account.post('/listInvoice', (req, res, err) => {
 account.post('/listDeposit', (req, res, err) => {
     const ott_data = req.ott_data;
     var data = req.body, sql, sqlquery, sqlc, value = [], where = [];
-    sqlquery = ` SELECT d.id,d.txnid,d.role,d.manid,d.deposit_type,d.deposit_amount,d.reason,d.cdate,d.status,m.bname,man.bname deposited_by,d.mdate,d.gwstatus,d.paymode
+    sqlquery = ` SELECT d.id,d.txnid,d.role,d.manid,d.deposit_type,d.deposit_amount,d.reason,d.cdate,d.status,m.bname,man.bname deposited_by,d.mdate,d.gwstatus,d.paymode,
+    dl.manager_before_balance
     FROM ott.deposit d LEFT JOIN ott.managers m ON d.manid = m.mid
+    INNER JOIN ott.deposit_log dl ON d.id = dl.dep_id
     LEFT JOIN ott.managers man ON d.cby = man.mid `;
     sqlc = ` SELECT COUNT(*) count,SUM(d.deposit_amount) dep_amt FROM ott.deposit d LEFT JOIN ott.managers m ON d.manid = m.mid
-    LEFT JOIN ott.managers man ON d.cby = man.mid `;
+    LEFT JOIN ott.managers man ON d.cby = man.mid     INNER JOIN ott.deposit_log dl ON d.id = dl.dep_id`;
     if (ott_data.role < 999) {
         where.push(`d.manid =${ott_data.id} `)
     }

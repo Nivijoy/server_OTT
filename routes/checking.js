@@ -96,4 +96,4 @@ async function CheckSubscription() {
   // return getpartnerpack; 
 }
 
-CheckSubscription()
+// CheckSubscription()

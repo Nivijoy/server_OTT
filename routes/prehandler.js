@@ -50,7 +50,7 @@ module.exports = async (req, res, next) => {
 
             } catch (e) {                  // Token Expiration...........................
                 con.release();
-                console.log('Inside prehandler Catch........ Token Expired......')
+                console.log('Inside prehandler Catch........ Token Expired......',e)
                 return res.status(401).send({
                     msg: 'Token is Expired',
                     status: 401,
